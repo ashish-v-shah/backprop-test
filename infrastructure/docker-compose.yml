@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  node-hello-world:
+    build:
+      context: ../src/backend
+      dockerfile: Dockerfile
+    container_name: node-hello-world
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '256M'
+        reservations:
+          cpus: '0.1'
+          memory: '128M'
+    volumes:
+      - node-hello-world-logs:/app/logs
+    networks:
+      - node-hello-world-network
+
+volumes:
+  node-hello-world-logs:
+    # Named volume for persisting application logs
+
+networks:
+  node-hello-world-network:
+    driver: bridge
+    # Isolated network for the application

@@ -1,0 +1,17 @@
+{
+  "watch": [
+    "src/backend/**/*.js"
+  ],
+  "ignore": [
+    "src/backend/tests/**",
+    "src/backend/node_modules/**",
+    "src/backend/coverage/**"
+  ],
+  "ext": "js,json",
+  "exec": "node src/backend/server.js",
+  "delay": 1000,
+  "env": {
+    "NODE_ENV": "development",
+    "PORT": 3000
+  }
+}
