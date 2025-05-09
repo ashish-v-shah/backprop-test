@@ -1,0 +1,93 @@
+name: Node.js Hello World CD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: 'src/backend/package-lock.json'
+      
+      - name: Install dependencies
+        working-directory: src/backend
+        run: npm ci
+      
+      - name: Run linting
+        working-directory: src/backend
+        run: npm run lint
+      
+      - name: Run unit tests
+        working-directory: src/backend
+        run: npm run test:unit
+      
+      - name: Run integration tests
+        working-directory: src/backend
+        run: npm run test:integration
+
+  build_and_push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [ test ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./src/backend
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/node-hello-world:latest,${{ secrets.DOCKER_USERNAME }}/node-hello-world:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [ build_and_push ]
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script:
+            - cd ~/node-hello-world
+            - docker pull ${{ secrets.DOCKER_USERNAME }}/node-hello-world:latest
+            - docker stop node-hello-world || true
+            - docker rm node-hello-world || true
+            - docker run -d -p 3000:3000 --name node-hello-world --restart unless-stopped ${{ secrets.DOCKER_USERNAME }}/node-hello-world:latest
+            - docker system prune -f
+
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [ deploy ]
+    steps:
+      - name: Wait for deployment to stabilize
+        run: sleep 10
+      
+      - name: Check if application is responding
+        run: curl --retry 5 --retry-delay 5 --retry-connrefused http://${{ secrets.DEPLOY_HOST }}:3000/hello | grep 'Hello world'
+      
+      - name: Check health endpoint
+        run: curl --retry 3 --retry-delay 5 --retry-connrefused http://${{ secrets.DEPLOY_HOST }}:3000/health | grep 'up'
